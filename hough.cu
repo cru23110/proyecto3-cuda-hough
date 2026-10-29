@@ -182,7 +182,17 @@ int main (int argc, char **argv)
   }
   printf("Done!\n");
 
-  // TODO clean-up
+  cudaEventDestroy (start);
+  cudaEventDestroy (stop);
+  cudaFree (d_Cos);
+  cudaFree (d_Sin);
+  cudaFree (d_in);
+  cudaFree (d_hough);
+  free (pcCos);
+  free (pcSin);
+  free (h_hough);
+  delete[] cpuht;
+  cudaDeviceReset ();
 
   return 0;
 }
