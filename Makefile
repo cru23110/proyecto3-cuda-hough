@@ -1,7 +1,22 @@
-all: pgm.o	hough
+NVCC   ?= nvcc
+ARCH   ?= native
+FLAGS   = -O3 -arch=$(ARCH) -std=c++17 -Icommon -Ithird_party
+COMMON  = common/pgm.cpp common/hough.cpp common/image_io.cpp common/lines.cpp
+HEADERS = $(wildcard common/*.h)
 
-hough:	hough.cu pgm.o
-	nvcc hough.cu pgm.o -o hough
+all: hough_global
 
-pgm.o:	common/pgm.cpp
-	g++ -c common/pgm.cpp -o ./pgm.o
+hough_global: src/hough_global.cu $(COMMON) $(HEADERS)
+	$(NVCC) $(FLAGS) src/hough_global.cu $(COMMON) -o $@
+
+run: hough_global
+	mkdir -p output
+	./hough_global runway.pgm
+
+bench: hough_global
+	bash scripts/run_benchmarks.sh
+
+clean:
+	rm -f hough_global hough_global.exe *.exp *.lib
+
+.PHONY: all run bench clean
