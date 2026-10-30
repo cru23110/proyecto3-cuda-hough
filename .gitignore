@@ -1,0 +1,10 @@
+hough_global
+hough_const
+hough_shared
+*.exe
+*.o
+*.obj
+*.exp
+*.lib
+__pycache__/
+.vscode/
