@@ -1,0 +1,3 @@
+NVIDIA GeForce RTX 5070 Ti, 616.56, 16303 MiB
+Build cuda_12.8.r12.8/compiler.35583870_0
+Mon Nov  2 04:48:15 UTC 2026
