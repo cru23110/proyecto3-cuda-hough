@@ -6,14 +6,20 @@
 
 bool parseArgs(int argc, char **argv, Options &opt) {
   if (argc < 2) {
-    printf("Uso: %s imagen.pgm [--runs N] [--block B] [--k K] [--csv f] [--out prefijo]\n", argv[0]);
+    printf("Uso: %s imagen.pgm [--runs N] [--block B] [--k K] [--top N] [--nms 0|1] [--csv f] [--out prefijo]\n", argv[0]);
     return false;
   }
   opt.input = argv[1];
-  for (int i = 2; i + 1 < argc; i += 2) {
+  for (int i = 2; i < argc; i += 2) {
+    if (i + 1 >= argc) {
+      printf("Falta el valor de %s\n", argv[i]);
+      return false;
+    }
     if (!strcmp(argv[i], "--runs")) opt.runs = atoi(argv[i + 1]);
     else if (!strcmp(argv[i], "--block")) opt.block = atoi(argv[i + 1]);
     else if (!strcmp(argv[i], "--k")) opt.k = (float)atof(argv[i + 1]);
+    else if (!strcmp(argv[i], "--top")) opt.top = atoi(argv[i + 1]);
+    else if (!strcmp(argv[i], "--nms")) opt.nms = atoi(argv[i + 1]);
     else if (!strcmp(argv[i], "--csv")) opt.csv = argv[i + 1];
     else if (!strcmp(argv[i], "--out")) opt.out = argv[i + 1];
     else {

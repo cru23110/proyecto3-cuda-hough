@@ -21,6 +21,8 @@ struct Options {
   int runs = 10;
   int block = 256;
   float k = 2.0f;
+  int top = 0;
+  int nms = 1;
 };
 
 // Misma fórmula CPU/GPU

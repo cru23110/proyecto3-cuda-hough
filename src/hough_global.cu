@@ -1,4 +1,5 @@
 // Hough: memoria global
+// Estilo: [ETIQUETA] nota corta
 #include <cstdio>
 #include <vector>
 #include "cuda_utils.h"
@@ -10,16 +11,17 @@
 __global__ void GPU_HoughTran(const unsigned char *__restrict__ pic, int w, int h, int *acc,
                               float rMax, float rScale,
                               const float *__restrict__ d_Cos, const float *__restrict__ d_Sin) {
+  // [ID] un hilo, un píxel
   int gloID = blockIdx.x * blockDim.x + threadIdx.x;
   if (gloID >= w * h || pic[gloID] == 0) return;
 
-  // Origen al centro
+  // [COORD] origen al centro
   int xCoord = gloID % w - w / 2;
   int yCoord = h / 2 - gloID / w;
 
   for (int tIdx = 0; tIdx < degreeBins; tIdx++) {
     int rIdx = rIndex(xCoord, yCoord, d_Cos[tIdx], d_Sin[tIdx], rMax, rScale);
-    // Varios píxeles, mismo bin
+    // [ATOMIC] varios píxeles, mismo bin
     atomicAdd(&acc[rIdx * degreeBins + tIdx], 1);
   }
 }
@@ -35,6 +37,7 @@ int main(int argc, char **argv) {
   printf("Imagen %dx%d\n", w, h);
   printDeviceInfo();
 
+  // [HOST] tablas y referencia CPU
   float *pcCos = new float[degreeBins];
   float *pcSin = new float[degreeBins];
   buildTrigTables(pcCos, pcSin);
@@ -46,6 +49,7 @@ int main(int argc, char **argv) {
   CPU_HoughTran(img.pixels, w, h, rMax, rScale, pcCos, pcSin, cpuAcc);
   double cpuMs = cpuTimer.stop();
 
+  // [GPU] reservar y copiar
   unsigned char *d_in;
   int *d_acc;
   float *d_Cos, *d_Sin;
@@ -62,7 +66,7 @@ int main(int argc, char **argv) {
   timer.create();
   std::vector<float> times;
 
-  // Corrida 0: calentamiento
+  // [TIEMPO] corrida 0: calentamiento
   for (int run = 0; run <= opt.runs; run++) {
     CUDA_CHECK(cudaMemset(d_acc, 0, sizeof(int) * accSize));
     timer.start();
@@ -71,12 +75,14 @@ int main(int argc, char **argv) {
     CUDA_CHECK(cudaGetLastError());
     if (run > 0) times.push_back(ms);
   }
+  // [SALIDA] validar y dibujar
   CUDA_CHECK(cudaMemcpy(gpuAcc, d_acc, sizeof(int) * accSize, cudaMemcpyDeviceToHost));
 
   reportTimes("global", opt, times, cpuMs);
   bool ok = validate(cpuAcc, gpuAcc);
-  saveOutputs(opt.out, "global", img.pixels, w, h, gpuAcc, rMax, rScale, opt.k);
+  saveOutputs(opt, "global", img.pixels, w, h, gpuAcc, rMax, rScale);
 
+  // [LIMPIEZA] GPU, CPU y reset
   timer.destroy();
   CUDA_CHECK(cudaFree(d_in));
   CUDA_CHECK(cudaFree(d_acc));

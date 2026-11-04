@@ -82,7 +82,7 @@ int main(int argc, char **argv) {
 
   reportTimes("const", opt, times, cpuMs);
   bool ok = validate(cpuAcc, gpuAcc);
-  saveOutputs(opt.out, "const", img.pixels, w, h, gpuAcc, rMax, rScale, opt.k);
+  saveOutputs(opt, "const", img.pixels, w, h, gpuAcc, rMax, rScale);
 
   // [LIMPIEZA] GPU, CPU y reset
   timer.destroy();

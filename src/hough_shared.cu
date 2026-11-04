@@ -96,7 +96,7 @@ int main(int argc, char **argv) {
 
   reportTimes("shared", opt, times, cpuMs);
   bool ok = validate(cpuAcc, gpuAcc);
-  saveOutputs(opt.out, "shared", img.pixels, w, h, gpuAcc, rMax, rScale, opt.k);
+  saveOutputs(opt, "shared", img.pixels, w, h, gpuAcc, rMax, rScale);
 
   // [LIMPIEZA] GPU, CPU y reset
   timer.destroy();
