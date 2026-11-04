@@ -10,6 +10,9 @@ all: $(BINS)
 hough_%: src/hough_%.cu $(COMMON) $(HEADERS)
 	$(NVCC) $(FLAGS) $< $(COMMON) -o $@
 
+variants: src/experiments/variants.cu $(COMMON) $(HEADERS)
+	$(NVCC) $(FLAGS) $< $(COMMON) -o $@
+
 run: all
 	mkdir -p output
 	for b in $(BINS); do ./$$b runway.pgm || exit 1; done
@@ -18,6 +21,6 @@ bench: hough_global
 	bash scripts/run_benchmarks.sh
 
 clean:
-	rm -f $(BINS) *.exe *.exp *.lib
+	rm -f $(BINS) variants *.exe *.exp *.lib
 
 .PHONY: all run bench clean
