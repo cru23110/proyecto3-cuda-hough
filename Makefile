@@ -16,6 +16,7 @@ variants: src/experiments/variants.cu $(COMMON) $(HEADERS)
 run: all
 	mkdir -p output
 	for b in $(BINS); do ./$$b runway.pgm || exit 1; done
+	-python3 scripts/compare_outputs.py
 
 bench: hough_global
 	bash scripts/run_benchmarks.sh

@@ -104,4 +104,11 @@ void saveOutputs(const Options &opt, const char *version, const unsigned char *p
   snprintf(path, sizeof(path), "%s_%s_hough.png", prefix, version);
   printf(saveHoughImage(path, acc) ? "Espacio Hough: %s\n" : "No se pudo escribir %s\n", path);
 
+  // Para comparar versiones
+  snprintf(path, sizeof(path), "%s_%s_acc.bin", prefix, version);
+  FILE *f = fopen(path, "wb");
+  if (f) {
+    fwrite(acc, sizeof(int), accSize, f);
+    fclose(f);
+  }
 }

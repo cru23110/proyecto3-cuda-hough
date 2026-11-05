@@ -1,0 +1,4 @@
+Referencia: runway_global_acc.bin (12456540 votos)
+runway_const_acc.bin: bins distintos = 0, imagen identica = True
+runway_shared_acc.bin: bins distintos = 0, imagen identica = True
+Resultado: TODAS IGUALES
