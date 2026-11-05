@@ -62,6 +62,7 @@ int main(int argc, char **argv) {
   CUDA_CHECK(cudaMemcpy(d_Sin, pcSin, sizeof(float) * degreeBins, cudaMemcpyHostToDevice));
 
   int blocks = (n + opt.block - 1) / opt.block;
+  printOccupancy(GPU_HoughTran, opt.block);
   GpuTimer timer;
   timer.create();
   std::vector<float> times;

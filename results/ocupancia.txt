@@ -1,0 +1,12 @@
+global,128, 12 bloques/SM, 100% de hilos
+const,128, 12 bloques/SM, 100% de hilos
+shared,128, 2 bloques/SM, 16% de hilos
+global,256, 6 bloques/SM, 100% de hilos
+const,256, 6 bloques/SM, 100% de hilos
+shared,256, 2 bloques/SM, 33% de hilos
+global,512, 3 bloques/SM, 100% de hilos
+const,512, 3 bloques/SM, 100% de hilos
+shared,512, 2 bloques/SM, 66% de hilos
+global,1024, 1 bloques/SM, 66% de hilos
+const,1024, 1 bloques/SM, 66% de hilos
+shared,1024, 1 bloques/SM, 66% de hilos

@@ -1,4 +1,4 @@
-// Experimento 7a: acceso a cos/sin
+// Experimentos: trig y compartida
 // Estilo: [ETIQUETA] nota corta
 #include <cstdio>
 #include <cstring>
@@ -12,11 +12,14 @@ __constant__ float d_Cos[degreeBins];
 __constant__ float d_Sin[degreeBins];
 
 enum Variant {
-  OnTheFly, Intrinsic, Global, GlobalLdg, Constant, ConstantDiv, GlobalLdgDiv, NumVariants
+  OnTheFly, Intrinsic, Global, GlobalLdg, Constant, ConstantDiv, GlobalLdgDiv,
+  SharedSkip, SharedAll, SharedFixed, NumVariants
 };
-const char *groups[NumVariants] = {"trig", "trig", "trig", "trig", "trig", "trig", "trig"};
+const char *groups[NumVariants] = {"trig", "trig", "trig", "trig", "trig", "trig", "trig",
+                                   "shared", "shared", "shared"};
 const char *names[NumVariants] = {"cosf_kernel", "sincosf_intrin", "global", "global_ldg", "constant",
-                                  "constant_div", "global_ldg_div"};
+                                  "constant_div", "global_ldg_div",
+                                  "skip_ceros", "volcar_todo", "solo_init_volcado"};
 
 // [TRIG] solo cambia cos/sin
 template <int V>
@@ -40,9 +43,37 @@ __global__ void kTrig(const unsigned char *__restrict__ pic, int w, int h, int *
   }
 }
 
+// [SHARED] solo cambia volcado
+template <int V>
+__global__ void kShared(const unsigned char *__restrict__ pic, int w, int h, int *acc, float rMax,
+                        float rScale, const float *, const float *) {
+  __shared__ int localAcc[accSize];
+  int locID = threadIdx.x;
+  int gloID = blockIdx.x * blockDim.x + locID;
+  for (int i = locID; i < accSize; i += blockDim.x) localAcc[i] = 0;
+  // [BARRERA 1] init terminada
+  __syncthreads();
+
+  if (V != SharedFixed && gloID < w * h && pic[gloID] > 0) {
+    int xCoord = gloID % w - w / 2;
+    int yCoord = h / 2 - gloID / w;
+    for (int tIdx = 0; tIdx < degreeBins; tIdx++) {
+      int rIdx = rIndex(xCoord, yCoord, d_Cos[tIdx], d_Sin[tIdx], rMax, rScale);
+      atomicAdd(&localAcc[rIdx * degreeBins + tIdx], 1);
+    }
+  }
+  // [BARRERA 2] votos terminados
+  __syncthreads();
+
+  // [VOLCADO] todo o solo >0
+  for (int i = locID; i < accSize; i += blockDim.x)
+    if (V == SharedAll || localAcc[i] > 0) atomicAdd(&acc[i], localAcc[i]);
+}
+
 using KernelFn = void (*)(const unsigned char *, int, int, int *, float, float, const float *, const float *);
 KernelFn kernels[NumVariants] = {kTrig<OnTheFly>, kTrig<Intrinsic>, kTrig<Global>, kTrig<GlobalLdg>,
-                                 kTrig<Constant>, kTrig<ConstantDiv>, kTrig<GlobalLdgDiv>};
+                                 kTrig<Constant>, kTrig<ConstantDiv>, kTrig<GlobalLdgDiv>,
+                                 kShared<SharedSkip>, kShared<SharedAll>, kShared<SharedFixed>};
 
 int main(int argc, char **argv) {
   Options opt;

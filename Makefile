@@ -20,7 +20,10 @@ run: all
 bench: hough_global
 	bash scripts/run_benchmarks.sh
 
+sweep: all
+	bash scripts/block_sweep.sh
+
 clean:
 	rm -f $(BINS) variants *.exe *.exp *.lib
 
-.PHONY: all run bench clean
+.PHONY: all run bench sweep clean
