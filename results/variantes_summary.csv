@@ -1,0 +1,11 @@
+group,variant,mediana,min,mismatches
+trig,cosf_kernel,0.510224,0.502144,2
+trig,sincosf_intrin,0.509280,0.500000,65
+trig,global,0.501536,0.496928,0
+trig,global_ldg,0.505424,0.495104,0
+trig,constant,0.510272,0.498976,0
+trig,constant_div,0.326928,0.320768,0
+trig,global_ldg_div,0.320816,0.315712,0
+shared,skip_ceros,0.112992,0.112800,0
+shared,volcar_todo,0.117184,0.117056,0
+shared,solo_init_volcado,0.022848,0.022848,8068
