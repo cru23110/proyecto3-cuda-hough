@@ -88,9 +88,15 @@ void reportTimes(const char *version, const Options &opt, const std::vector<floa
     printf("No se pudo abrir %s\n", opt.csv);
     return;
   }
+  // Continuar numeración previa
+  char line[128], key[64];
+  int prev = 0;
+  snprintf(key, sizeof(key), "%s,%d,", version, opt.block);
+  rewind(f);
+  while (fgets(line, sizeof(line), f)) prev += !strncmp(line, key, strlen(key));
   fseek(f, 0, SEEK_END);
   if (ftell(f) == 0) fprintf(f, "version,block,run,kernel_ms\n");
   for (size_t i = 0; i < ms.size(); i++)
-    fprintf(f, "%s,%d,%zu,%.6f\n", version, opt.block, i + 1, ms[i]);
+    fprintf(f, "%s,%d,%zu,%.6f\n", version, opt.block, prev + i + 1, ms[i]);
   fclose(f);
 }

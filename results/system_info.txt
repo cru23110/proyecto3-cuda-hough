@@ -1,3 +1,5 @@
 NVIDIA GeForce RTX 5070 Ti, 616.56, 16303 MiB
 Build cuda_12.8.r12.8/compiler.35583870_0
-Mon Nov  2 04:48:15 UTC 2026
+AMD Ryzen 7 7800X3D 8-Core Processor
+Tue Nov 10 03:16:10 UTC 2026
+CPU: 32.498 ms -> speedup 52.4x

@@ -18,7 +18,7 @@ run: all
 	for b in $(BINS); do ./$$b runway.pgm || exit 1; done
 	-python3 scripts/compare_outputs.py
 
-bench: hough_global
+bench: all variants
 	bash scripts/run_benchmarks.sh
 
 sweep: all
