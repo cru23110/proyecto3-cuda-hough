@@ -1,0 +1,53 @@
+\section{Uso de memoria Constante}
+\label{sec:constante}
+
+\subsection{Cómo se aplicó}
+
+En la versión global, las tablas de coseno y seno se reservaban con \texttt{cudaMalloc}, se copiaban con \texttt{cudaMemcpy} y se pasaban como argumentos al kernel. En \texttt{src/hough\_const.cu} se declararon en el encabezado del programa, fuera del \texttt{main} y con alcance global, como \texttt{\_\_constant\_\_ float d\_Cos[degreeBins]} y \texttt{\_\_constant\_\_ float d\_Sin[degreeBins]}, con 720 bytes en total de los 64 KB disponibles. El host calcula los 90 valores una sola vez con \texttt{buildTrigTables} y los copia a la memoria constante con \texttt{cudaMemcpyToSymbol}. Como los símbolos son globales, el kernel \texttt{GPU\_HoughTranConst} ya no los recibe como parámetros, y el programa ya no necesita \texttt{cudaMalloc} ni \texttt{cudaFree} para ellos, porque la memoria constante es estática (incisos 5a, 5b y 5c). Dentro del kernel, cada hilo recorre los 90 ángulos en el mismo orden. En la iteración \texttt{tIdx}, los 32 hilos de un warp leen la misma dirección \texttt{d\_Cos[tIdx]}, que es el patrón ideal de esta memoria: la caché de constantes del SM atiende la lectura una vez y la difunde (\emph{broadcast}) a todo el warp. El resto del kernel no cambia: la imagen se sigue leyendo de la memoria global y los votos se siguen sumando con \texttt{atomicAdd} sobre el acumulador global.
+
+\noindent\begin{minipage}{\linewidth}
+\lstinputlisting[firstline=11, lastline=31, firstnumber=11, caption={Kernel con memoria constante (\texttt{src/hough\_const.cu}).}]{../../src/hough_const.cu}
+\lstinputlisting[firstline=62, lastline=64, firstnumber=62, caption={Copia de las tablas a la memoria constante en el \texttt{main}.}]{../../src/hough_const.cu}
+\end{minipage}
+
+\subsection{Diagrama}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.72\linewidth]{memoria_constante.png}
+  \caption{Uso de la memoria constante: entradas, etapas y salida del kernel \texttt{GPU\_HoughTranConst}.}
+  \label{fig:constante}
+\end{figure}
+
+\subsection{Efecto en el tiempo de ejecución}
+
+Con bloques de 256 hilos y 30 corridas, la mediana de la versión constante es \textbf{0.507 ms}, igual a la de la versión global (0.507 ms). Las medias son distintas (0.565 ms contra 0.653 ms), pero solo porque la versión global tuvo más corridas con picos de ruido del sistema (Sección~\ref{sec:resultados}). Una prueba $t$ de Welch entre ambas da $p = 0.065$, así que \textbf{la diferencia no es estadísticamente significativa}: la memoria constante no mejoró el tiempo.
+
+\subsection{¿Por qué no hubo mejora? (pregunta 7a)}
+
+Para responder con datos y no solo con teoría se escribió \texttt{src/experiments/variants.cu}. El experimento ejecuta siete kernels idénticos salvo por la forma de obtener $\cos\theta$ y $\sin\theta$, todos con el acumulador en memoria global, intercalados y con 30 corridas cada uno (Tabla~\ref{tab:trig}, Figura~\ref{fig:trig}).
+
+\begin{table}[H]
+  \centering
+  \input{tablas/variantes_trig.tex}
+  \caption{Variantes de acceso a seno y coseno. \emph{\_div}: cada hilo del warp recorre los ángulos con un desfase distinto. Los mismatches se cuentan contra la CPU.}
+  \label{tab:trig}
+\end{table}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.85\linewidth]{variantes_trig.png}
+  \caption{Mediana del kernel según el origen de $\cos$ y $\sin$.}
+  \label{fig:trig}
+\end{figure}
+
+Los resultados muestran cuatro cosas:
+
+\begin{enumerate}
+  \item \textbf{Leer el seno y el coseno no es el cuello de botella.} Las cinco variantes con acceso uniforme tardan lo mismo (0.502 a 0.510 ms), ya sea con una tabla en memoria constante, una tabla en memoria global, \texttt{\_\_ldg} o calculando \texttt{cosf} en el kernel. Una tabla de 720 bytes queda en la caché L1 del SM después del primer acceso, así que la versión global ya leía las tablas desde caché. El enunciado anticipa este efecto: desde la arquitectura Fermi, la caché L2 \enquote{tiene menos latencia y satisface muchas de las necesidades de transacciones de memoria} \cite{enunciado}.
+  \item \textbf{El cuello de botella son los \texttt{atomicAdd} sobre el acumulador global.} Cada píxel hace 90 votos: 12.46 millones de operaciones atómicas sobre solo 9\,000 direcciones. En la variante \emph{\_div}, cada hilo recorre los ángulos con un desfase distinto, y los 32 hilos de un warp votan en 32 columnas $\theta$ diferentes en lugar de la misma. El trabajo es idéntico y el resultado sigue siendo exacto, pero el tiempo baja de 0.50 a 0.32 ms (36\,\% menos). Solo cambió la contención.
+  \item \textbf{La memoria constante sí se serializa con accesos divergentes.} La guía de CUDA lo explica: en la memoria constante, \enquote{A request is then split into as many separate requests as there are different memory addresses in the initial request, decreasing throughput by a factor equal to the number of separate requests}\footnote{NVIDIA Corporation (2025), \textit{CUDA C++ Programming Guide}, sección \emph{Constant Memory} de \emph{Device Memory Accesses}.} \cite{cudaguide}. En el experimento, \texttt{constant\_div} es más lenta que \texttt{global\_ldg\_div} (0.327 contra 0.321 ms), mientras que con acceso uniforme ambas empatan. La diferencia es pequeña porque las atómicas dominan el tiempo, pero confirma que la memoria constante solo conviene cuando todo el warp lee la misma dirección, que es justo el patrón de este kernel.
+  \item \textbf{La tabla precalculada también es necesaria para la correctitud.} Calcular \texttt{cosf} en la GPU produce 2 bins distintos de la CPU, y la intrínseca \texttt{\_\_sincosf}, que es más rápida pero menos precisa, produce 65. Con la tabla, CPU y GPU usan exactamente los mismos valores.
+\end{enumerate}
+
+En resumen, la memoria constante se aplicó correctamente y es la memoria adecuada para estas tablas, pero no podía mejorar el tiempo porque la lectura de las tablas nunca fue lo que limitaba el kernel. Para acelerarlo había que reducir la contención atómica, que es lo que hace la memoria compartida.
