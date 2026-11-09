@@ -1,0 +1,29 @@
+// dot -Tpng memoria_compartida.dot -o memoria_compartida.png
+digraph G {
+  rankdir=TB;
+  graph [fontname="Helvetica", fontsize=13, nodesep=0.4, ranksep=0.35, label="Kernel con memoria compartida (un bloque de 256 hilos)", labelloc=t];
+  node  [fontname="Helvetica", fontsize=11, shape=box, style="rounded,filled", fillcolor="#eef3fb", color="#4a6fa5"];
+  edge  [fontname="Helvetica", fontsize=10, color="#555555"];
+
+  subgraph cluster_in {
+    label="Entradas"; style="rounded,dashed"; color="#999999";
+    pic  [label="pic[w*h]\nMemoria GLOBAL\n(imagen, 480 000 B)", fillcolor="#fde9d9", color="#c0504d"];
+    trig [label="d_Cos[90], d_Sin[90]\nMemoria CONSTANTE\n(720 B, broadcast al warp)", fillcolor="#e2efda", color="#548235"];
+  }
+
+  init  [label="Paso 1: Inicializar localAcc = 0\nfor (i = locID; i < 9000; i += blockDim.x)\nMemoria COMPARTIDA (36 000 B por bloque)", fillcolor="#fff2cc", color="#bf9000"];
+  b1    [label="BARRERA 1: __syncthreads()\nnadie vota antes de que localAcc esté en 0", shape=box, style="filled", fillcolor="#404040", fontcolor="white"];
+  vote  [label="Paso 2: Votación (cada hilo = 1 píxel)\nsi pic[gloID] > 0: para cada θ\natomicAdd(&localAcc[rIdx*90 + tIdx], 1)\n12.46 M atomics en shared (baja latencia)", fillcolor="#fff2cc", color="#bf9000"];
+  b2    [label="BARRERA 2: __syncthreads()\nnadie vuelca antes de que todos voten", shape=box, style="filled", fillcolor="#404040", fontcolor="white"];
+  flush [label="Paso 3: Volcado (solo bins > 0)\nfor (i = locID; i < 9000; i += blockDim.x)\natomicAdd(&acc[i], localAcc[i])\n2.11 M atomics en global (antes 12.46 M)", fillcolor="#fff2cc", color="#bf9000"];
+
+  subgraph cluster_out {
+    label="Salida"; style="rounded,dashed"; color="#999999";
+    acc [label="acc[9000]\nMemoria GLOBAL\n(suma de los 1 875 bloques)", fillcolor="#fde9d9", color="#c0504d"];
+    host [label="Paso 4: cudaMemcpy D→H\nvalidación CPU + imagen con líneas", fillcolor="#f2f2f2", color="#7f7f7f"];
+  }
+
+  init -> b1 -> vote -> b2 -> flush -> acc -> host;
+  pic  -> vote [label="lee 1 byte"];
+  trig -> vote [label="lee cos/sin[tIdx]"];
+}

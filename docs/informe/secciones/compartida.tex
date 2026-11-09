@@ -1,0 +1,66 @@
+\section{Uso de memoria Compartida}
+\label{sec:compartida}
+
+\subsection{Cómo se aplicó}
+
+El enunciado explica por qué el tamaño del acumulador está limitado en CUDA: \enquote{en el caso de CUDA en realidad está restringido por el tamaño de la memoria Compartida, ya que para beneficiarnos de la velocidad de acceso a esta memoria, mantenemos un acumulador local por cada bloque de hilos} \cite{enunciado}. En las versiones anteriores, los 12.46 millones de votos se hacían con \texttt{atomicAdd} directamente sobre el acumulador global, de solo 9\,000 direcciones, y la Sección~\ref{sec:constante} mostró que esa contención es lo que limita el kernel. La versión final (\texttt{src/hough\_shared.cu}) usa las tres memorias: la imagen en global, las tablas en constante y, además, un acumulador local \texttt{localAcc} de \texttt{degreeBins * rBins} = 9\,000 enteros (36\,000 bytes) por bloque, declarado con \texttt{\_\_shared\_\_} (incisos 8a y 8b). Un \texttt{static\_assert} verifica al compilar que cabe en los 48 KB por bloque. El kernel trabaja en tres etapas separadas por dos barreras \texttt{\_\_syncthreads()}:
+
+\begin{enumerate}
+  \item \textbf{Inicialización (8c).} Cada hilo usa su índice local \texttt{locID = threadIdx.x} para poner en cero los bins \texttt{locID}, \texttt{locID + blockDim.x}, \ldots, hasta 9\,000. Así los 256 hilos se reparten el trabajo y cada uno limpia unos 35 bins.
+  \item \textbf{Barrera 1 y votación (8d, 8e).} Después de la primera barrera, cada hilo procesa su píxel y vota con \texttt{atomicAdd} sobre \texttt{localAcc}. La operación sigue siendo atómica, porque los hilos del bloque comparten el acumulador, pero ahora ocurre en memoria on-chip y solo compiten los 256 hilos del bloque.
+  \item \textbf{Barrera 2 y volcado (8f, 8g).} Después de la segunda barrera, un ciclo que empieza en \texttt{locID} recorre \texttt{localAcc} con el mismo salto y suma cada bin al acumulador global con un solo \texttt{atomicAdd(\&acc[i], localAcc[i])}. Se omiten los bins en cero.
+\end{enumerate}
+
+La barrera 1 evita que un hilo vote en un bin que otro hilo todavía no ha puesto en cero. La barrera 2 evita que un hilo copie un bin a la memoria global mientras otros hilos del bloque siguen votando en él. Por eso el kernel \textbf{no puede usar el \texttt{return} temprano} de las versiones anteriores para los hilos sobrantes o los píxeles apagados. La guía de CUDA lo advierte: \enquote{\_\_syncthreads() is allowed in conditional code but only if the conditional evaluates identically across the entire thread block, otherwise the code execution is likely to hang or produce unintended side effects}\footnote{NVIDIA Corporation (2025), \textit{CUDA C++ Programming Guide}, sección \emph{Synchronization Functions}.} \cite{cudaguide}. La votación se protege con un \texttt{if}, y todos los hilos del bloque llegan a las dos barreras y participan en la inicialización y el volcado.
+
+\noindent\begin{minipage}{\linewidth}
+\lstinputlisting[firstline=17, lastline=45, firstnumber=17, caption={Kernel con memoria compartida y barreras (\texttt{src/hough\_shared.cu}).}]{../../src/hough_shared.cu}
+\end{minipage}
+
+\subsection{Diagrama}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.78\linewidth]{memoria_compartida.png}
+  \caption{Uso de la memoria compartida en un bloque: cuatro etapas separadas por dos barreras.}
+  \label{fig:compartida}
+\end{figure}
+
+\subsection{Efecto en el tiempo de ejecución}
+
+Con bloques de 256 hilos y 30 corridas, la mediana de la versión compartida es \textbf{0.113 ms}, contra 0.507 ms de la versión global: es \textbf{4.49 veces más rápida} (la diferencia es significativa, con $p < 10^{-13}$ en la prueba de Welch). Sus 30 corridas están entre 0.1129 y 0.1132 ms, mientras que la versión global varió entre 0.497 y 1.091 ms por el ruido de medición que se analiza en la Sección~\ref{sec:resultados}. Hay dos causas de la mejora:
+
+\begin{enumerate}
+  \item \textbf{Muchas menos atómicas en memoria global.} Los 12.46 millones de votos se hacen en memoria compartida. A la memoria global solo llegan las sumas del volcado: unas \textbf{2.11 millones} de \texttt{atomicAdd} en lugar de 12.46 millones, 5.9 veces menos. La cifra se calculó contando los pares distintos (bloque, bin) que produce la imagen.
+  \item \textbf{Menos contención.} En lugar de que los 480\,000 hilos compitan por un único acumulador, cada uno de los 1\,875 bloques compite solo dentro de su propio acumulador local, que además tiene mucha menor latencia.
+\end{enumerate}
+
+El experimento \texttt{variants.cu} también midió dos detalles del volcado (Tabla~\ref{tab:volcado}). Omitir los bins en cero ahorra 3.5\,\% del tiempo, porque cada bloque toca en promedio solo 1\,128 de los 9\,000 bins. Además, una variante que solo inicializa y vuelca, sin votar, tarda 0.023 ms: alrededor de \textbf{20\,\% del tiempo total es un costo fijo por bloque} que no depende de cuántos píxeles tenga.
+
+\begin{table}[H]
+  \centering
+  \input{tablas/variantes_shared.tex}
+  \caption{Variantes del volcado en la versión compartida (bloques de 256). La variante \texttt{solo\_init\_volcado} no vota, por eso no coincide con la CPU.}
+  \label{tab:volcado}
+\end{table}
+
+\subsection{Tamaño de bloque y ocupancia}
+
+Ese costo fijo explica el barrido de tamaño de bloque (Tabla~\ref{tab:barrido}, Figura~\ref{fig:barrido}). El barrido reporta el mínimo de 30 corridas por punto, porque es el estadístico que no se ve afectado por el ruido de medición (Sección~\ref{sec:resultados}). Con bloques más grandes hay menos bloques: con 512 hilos hay 938 bloques en lugar de 1\,875, y el trabajo de inicializar y volcar baja de 33.8 a 16.9 millones de operaciones. Por otro lado, los 36 KB de memoria compartida por bloque limitan la ocupancia. \texttt{cudaOccupancyMaxActiveBlocksPerMultiprocessor} reporta que solo caben 2 bloques por SM, así que con 256 hilos solo hay 512 hilos activos por SM (33\,\% de los 1\,536 posibles). Con 512 hilos por bloque se duplican los hilos activos y se reduce a la mitad el costo fijo, por lo que el kernel baja a \textbf{0.074 ms}, 6.8 veces más rápido que la versión global. Con 1\,024 hilos solo cabe un bloque por SM y el tiempo deja de mejorar (0.076 ms). Las versiones global y constante no usan memoria compartida y llegan a 100\,\% de ocupancia hasta 512 hilos; su tiempo casi no cambia (0.50 ms), porque las limita la contención atómica, y solo sube un poco con 1\,024 hilos (0.52 ms), cuando la ocupancia baja a 66\,\%. Se mantuvo 256 como valor por defecto para comparar las tres versiones en igualdad de condiciones, y el mejor tamaño (512) se reporta aparte.
+
+\begin{table}[H]
+  \centering
+  \small
+  \input{tablas/barrido.tex}
+  \caption{Mínimo del kernel (ms, 30 corridas por celda) y bloques activos por SM según el tamaño de bloque.}
+  \label{tab:barrido}
+\end{table}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.8\linewidth]{barrido_bloques.png}
+  \caption{Barrido de tamaño de bloque. La versión compartida mejora hasta 512 hilos; las otras dos casi no cambian.}
+  \label{fig:barrido}
+\end{figure}
+
+El acumulador de la versión compartida es \textbf{idéntico bin por bin} al de la CPU (0 diferencias en los 12\,456\,540 votos) y al de las otras dos versiones. El script \texttt{scripts/compare\_outputs.py} confirma que las tres versiones generan el mismo acumulador y la misma imagen de salida (Apéndice~\ref{app:evidencia}).
