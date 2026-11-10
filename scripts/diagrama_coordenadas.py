@@ -1,4 +1,5 @@
 # Genera docs/coordenadas.png
+import os
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -39,4 +40,5 @@ ax.set_ylim(-80, H + 40)
 ax.set_aspect("equal")
 ax.axis("off")
 ax.set_title("Imagen 800x600: indices (i, j) a coordenadas (x, y)", pad=25)
+os.makedirs("docs", exist_ok=True)
 plt.savefig("docs/coordenadas.png", dpi=150, bbox_inches="tight")

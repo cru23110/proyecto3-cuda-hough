@@ -8,3 +8,7 @@ hough_shared
 *.lib
 __pycache__/
 .vscode/
+docs/
+results/log_*.txt
+variants
+optimizaciones

@@ -4,3 +4,5 @@ Makefile text eol=lf
 *.pgm binary
 *.png binary
 *.pdf binary
+*.bin binary
+*.pptx binary
