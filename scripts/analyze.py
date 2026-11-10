@@ -40,18 +40,19 @@ summary["speedup_cpu"] = cpu_ms / summary.mediana
 summary.to_csv(RES / "summary.csv", index=False, float_format="%.6f")
 
 # Welch: ¿diferencia real?
+NOMBRE = {"global": "Global", "const": "Constante", "shared": "Compartida"}
 welch = []
 for a, b in [("global", "const"), ("global", "shared"), ("const", "shared")]:
     t, p = stats.ttest_ind(data[a].kernel_ms, data[b].kernel_ms, equal_var=False)
-    welch.append({"comparacion": f"{a} vs {b}", "t": t, "p": p, "significativa": p < 0.05})
+    welch.append({"comparacion": f"{NOMBRE[a]} y {NOMBRE[b].lower()}", "t": t, "p": p, "significativa": p < 0.05})
 welch = pd.DataFrame(welch)
 
-md = ["| Versión | n | Media ± sd (ms) | Mediana (ms) | Mín (ms) | IC 95 % | Speedup vs global | Speedup vs CPU |",
+md = ["| Versión | n | Media ± sd, ms | Mediana, ms | Mínimo, ms | IC 95 % | Aceleración contra global | Aceleración contra CPU |",
       "|---|---|---|---|---|---|---|---|"]
 for _, r in summary.iterrows():
     md.append(f"| {VERSIONS[r.version]} | {r.n} | {r.media:.3f} ± {r.sd:.3f} | {r.mediana:.3f} | {r['min']:.3f} | "
               f"± {r.ic95:.3f} | {r.speedup_global:.2f}× | {r.speedup_cpu:.0f}× |")
-md += ["", f"CPU secuencial: {cpu_ms:.2f} ms. Speedup calculado con la mediana.", "",
+md += ["", f"CPU secuencial: {cpu_ms:.2f} ms. Aceleración calculada con la mediana.", "",
        "| Prueba t de Welch | t | p | ¿Significativa (α = 0.05)? |", "|---|---|---|---|"]
 md += [f"| {r.comparacion} | {r.t:.2f} | {r.p:.2e} | {'Sí' if r.significativa else 'No'} |" for _, r in welch.iterrows()]
 (RES / "summary.md").write_text("\n".join(md) + "\n", encoding="utf-8")
@@ -60,19 +61,19 @@ s = summary.assign(nombre=summary.version.map(VERSIONS))
 tex_table(s, ["nombre", "media", "sd", "mediana", "min", "max", "ic95", "speedup_global"],
           {"media": f3, "sd": f3, "mediana": f3, "min": f3, "max": f3, "ic95": lambda v: rf"$\pm${v:.3f}",
            "speedup_global": lambda v: rf"{v:.2f}$\times$"},
-          TEX / "resumen.tex", r"Versión & Media & D.E. & Mediana & Mín. & Máx. & IC 95\,\% & Speedup")
+          TEX / "resumen.tex", r"Versión & Media & Desviación & Mediana & Mínimo & Máximo & IC 95\,\% & Aceleración")
 tex_table(welch, ["comparacion", "t", "p", "significativa"],
-          {"t": lambda v: f"{v:.2f}", "p": lambda v: f"{v:.1e}".replace("e", r"\,e"),
+          {"t": lambda v: f"{v:.2f}", "p": lambda v: "$%s \\times 10^{%d}$" % tuple(f"{v:.1e}".replace("e-0", "e-").split("e")[:1] + [int(f"{v:.1e}".split("e")[1])]),
            "significativa": lambda v: "Sí" if v else "No"},
           TEX / "welch.tex", r"Comparación & $t$ & $p$ & Significativa")
 
 # Bitácora: primeras 10
 first = pd.DataFrame({"run": range(1, 11), **{v: d.kernel_ms.values[:10] for v, d in data.items()}})
 tex_table(first, ["run", *VERSIONS], {v: f3 for v in VERSIONS}, TEX / "bitacora10.tex",
-          r"Corrida & Global (ms) & Global + Const. (ms) & G + C + Compartida (ms)")
+          r"Corrida & Global & Global + Constante & Global + Constante + Compartida")
 full = pd.DataFrame({"run": range(1, len(data["global"]) + 1), **{v: d.kernel_ms.values for v, d in data.items()}})
 tex_table(full, ["run", *VERSIONS], {v: f3 for v in VERSIONS}, TEX / "bitacora_completa.tex",
-          r"Corrida & Global (ms) & Global + Const. (ms) & G + C + Compartida (ms)")
+          r"Corrida & Global & Global + Constante & Global + Constante + Compartida")
 
 # Barrido de bloques
 sweep_path = RES / "bitacora_block_sweep.csv"
@@ -85,7 +86,7 @@ if sweep_path.exists():
     sw.to_csv(RES / "block_sweep_summary.csv", float_format="%.6f")
     t = sw.reset_index().assign(occ_g=occ["global"].values, occ_s=occ["shared"].values)
     tex_table(t, ["block", *VERSIONS, "occ_g", "occ_s"], {v: f3 for v in VERSIONS},
-              TEX / "barrido.tex", r"Hilos/bloque & Global & G + C & G + C + Comp. & Bloques/SM (G) & Bloques/SM (Comp.)")
+              TEX / "barrido.tex", r"Hilos por bloque & Global & Constante & Compartida & Bloques por SM, global & Bloques por SM, compartida")
     print("\nMínimo por bloque (ms):\n", sw.round(4))
 
 # Control: ¿el ruido es externo?
@@ -97,7 +98,7 @@ if ctrl_path.exists():
     ct["kernel"] = ct.version.map({"global": "Global", "shared": "Compartida"}) + ", bloques de " + ct.block.astype(str)
     tex_table(ct, ["kernel", "n", "min", "mediana", "max", "lentas"],
               {"min": f3, "mediana": f3, "max": f3, "lentas": lambda v: rf"{v:.0f}\,\%"},
-              TEX / "control_ruido.tex", r"Kernel & Corridas & Mín. & Mediana & Máx. & Lentas ($> 1.2\times$ mín.)")
+              TEX / "control_ruido.tex", r"Kernel & Corridas & Mínimo & Mediana & Máximo & Corridas lentas")
     print("\nControl de ruido:\n", ct.round(3).to_string(index=False))
 
 # Variantes (7a y volcado)
@@ -110,8 +111,24 @@ if var_path.exists():
     for g in ["trig", "shared"]:
         tex_table(vs[vs.group == g], ["variant", "mediana", "min", "mismatches"],
                   {"variant": lambda v: v.replace("_", r"\_"), "mediana": f3, "min": f3},
-                  TEX / f"variantes_{g}.tex", r"Variante & Mediana (ms) & Mín. (ms) & Mismatches")
+                  TEX / f"variantes_{g}.tex", r"Variante & Mediana & Mínimo & Diferencias")
     print("\nVariantes:\n", vs.round(4).to_string(index=False))
+
+# Optimizaciones de la compartida
+OPT = {"base_256": "Versión final, 256 hilos", "base_512": "Versión final, 512 hilos",
+       "ldg_512": r"Tabla global con \texttt{\_\_ldg}, 512", "div_const_512": r"$\theta$ por hilo, tabla constante",
+       "div_ldg_512": r"$\theta$ por hilo, tabla global \texttt{\_\_ldg}", "multi_256": "Varios píxeles por hilo, 256",
+       "multi_512": "Varios píxeles por hilo, 512", "fijo_256": "Solo inicializar y volcar, 256",
+       "fijo_512": "Solo inicializar y volcar, 512", "fijo_multi_512": "Solo inicializar y volcar, malla fija"}
+opt_path = RES / "bitacora_optimizaciones.csv"
+if opt_path.exists():
+    op = pd.read_csv(opt_path).groupby(["variant", "block", "grid"], sort=False).agg(
+        mediana=("kernel_ms", "median"), min=("kernel_ms", "min"), mismatches=("mismatches", "first")).reset_index()
+    op.to_csv(RES / "optimizaciones_summary.csv", index=False, float_format="%.6f")
+    op["nombre"] = op.variant.map(OPT)
+    tex_table(op, ["nombre", "grid", "mediana", "min", "mismatches"], {"mediana": f3, "min": f3},
+              TEX / "optimizaciones.tex", r"Variante & Bloques & Mediana & Mínimo & Diferencias")
+    print("\nOptimizaciones:\n", op.drop(columns="nombre").round(4).to_string(index=False))
 
 print(summary.round(4).to_string(index=False))
 print(welch.to_string(index=False))

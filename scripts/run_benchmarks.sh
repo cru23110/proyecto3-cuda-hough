@@ -5,7 +5,7 @@ ROUNDS=${1:-3}
 RUNS=${2:-10}
 
 mkdir -p results output
-make all variants
+make all variants optimizaciones
 
 {
   nvidia-smi --query-gpu=name,driver_version,memory.total --format=csv,noheader
@@ -24,6 +24,7 @@ done
 grep -h "CPU:" results/log_*.txt | head -n 1 >> results/system_info.txt
 
 ./variants runway.pgm --runs 30 | tee results/variantes.txt
+./optimizaciones runway.pgm --runs 30 | tee results/optimizaciones.txt
 # Sin python: correr en host
 if command -v python3 >/dev/null; then
   python3 scripts/compare_outputs.py | tee results/compare_outputs.txt

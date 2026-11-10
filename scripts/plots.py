@@ -42,7 +42,7 @@ ax.set_xlim(-0.5, 2.5)
 ax.set_ylim(0, None)
 ax.set_ylabel("Tiempo de kernel (ms)")
 ax.grid(axis="x", visible=False)
-ax.set_title("30 corridas por versión (bloques de 256 hilos)", loc="left", color=INK)
+ax.set_title("30 corridas por versión, bloques de 256 hilos", loc="left", color=INK)
 save(fig, "tiempos_por_version.png")
 
 # 2. Speedup vs global
@@ -55,7 +55,7 @@ for i, v in enumerate(VERSIONS):
                 fontweight="bold")
 ax.axhline(1, color=MUTED, linewidth=1, linestyle="--")
 ax.set_xticks(range(3), VERSIONS.values())
-ax.set_ylabel("Speedup vs. global (mediana)")
+ax.set_ylabel("Aceleración respecto de global")
 ax.grid(axis="x", visible=False)
 ax.set_title("Aceleración respecto de la versión global", loc="left", color=INK)
 save(fig, "speedup.png")
@@ -81,13 +81,13 @@ ax.set_xlim(100, 1900)
 ax.set_ylim(0, None)
 ax.set_xlabel("Hilos por bloque")
 ax.set_ylabel("Mínimo del kernel (ms)")
-ax.set_title("Barrido de tamaño de bloque (mínimo de 30 corridas)", loc="left", color=INK)
+ax.set_title("Barrido de tamaño de bloque, mínimo de 30 corridas", loc="left", color=INK)
 save(fig, "barrido_bloques.png")
 
 # 4. Variantes trigonométricas
 va = pd.read_csv(RES / "bitacora_variantes.csv")
 tr = va[va.group == "trig"].groupby("variant", sort=False).agg(m=("kernel_ms", "median"), bad=("mismatches", "first"))
-labels = {"cosf_kernel": "cosf/sinf en kernel", "sincosf_intrin": "__sincosf (intrínseca)",
+labels = {"cosf_kernel": "cosf/sinf en kernel", "sincosf_intrin": "intrínseca __sincosf",
           "global": "tabla global", "global_ldg": "tabla global + __ldg", "constant": "tabla constante",
           "constant_div": "constante, índice por hilo", "global_ldg_div": "global + __ldg, índice por hilo"}
 fig, ax = plt.subplots(figsize=(7, 4))
@@ -96,7 +96,7 @@ for yi, (name, r) in zip(y, tr.iterrows()):
     div = name.endswith("_div")
     ax.barh(yi, r.m, height=0.6, color="#6250d6" if div else COLORS["global"],
             label="θ distinto por hilo del warp" if div else "θ igual en todo el warp")
-    note = f"{r.m:.3f} ms" + (f"  ({int(r.bad)} mismatches)" if r.bad else "")
+    note = f"{r.m:.3f} ms" + (f", {int(r.bad)} diferencias" if r.bad else "")
     ax.annotate(note, (r.m, yi), xytext=(4, 0), textcoords="offset points", va="center", fontsize=10, color=INK)
 ax.set_yticks(y, [labels[n] for n in tr.index])
 ax.set_xlim(0, 0.8)
@@ -107,10 +107,35 @@ ax.legend([h[0], h[-1]], [l[0], l[-1]], loc="lower right", frameon=False, fontsi
 ax.set_title("Pregunta 7a: de dónde salen cos y sin", loc="left", color=INK)
 save(fig, "variantes_trig.png")
 
+# 4b. Optimizaciones de la compartida
+op = pd.read_csv(RES / "bitacora_optimizaciones.csv")
+op = op[~op.variant.str.startswith("fijo")].groupby("variant", sort=False).kernel_ms.median()
+kind = {"base_256": ("Versión final", COLORS["shared"]), "base_512": ("Versión final", COLORS["shared"]),
+        "ldg_512": ("Tabla global __ldg", COLORS["global"]), "div_const_512": ("θ por hilo", "#6250d6"),
+        "div_ldg_512": ("θ por hilo", "#6250d6"), "multi_256": ("Varios píxeles por hilo", COLORS["const"]),
+        "multi_512": ("Varios píxeles por hilo", COLORS["const"])}
+olabels = {"base_256": "final, 256 hilos", "base_512": "final, 512 hilos", "ldg_512": "tabla global __ldg, 512",
+           "div_const_512": "θ por hilo, tabla constante", "div_ldg_512": "θ por hilo, tabla global __ldg",
+           "multi_256": "varios píxeles/hilo, 256", "multi_512": "varios píxeles/hilo, 512"}
+fig, ax = plt.subplots(figsize=(7, 4))
+y = np.arange(len(op))[::-1]
+for yi, (name, m) in zip(y, op.items()):
+    ax.barh(yi, m, height=0.6, color=kind[name][1], label=kind[name][0])
+    ax.annotate(f"{m:.3f} ms", (m, yi), xytext=(4, 0), textcoords="offset points", va="center", fontsize=10, color=INK)
+ax.set_yticks(y, [olabels[n] for n in op.index])
+ax.set_xlim(0, 0.4)
+ax.set_xlabel("Mediana del kernel (ms)")
+ax.grid(axis="y", visible=False)
+h, l = ax.get_legend_handles_labels()
+seen = dict(zip(l, h))
+ax.legend(seen.values(), seen.keys(), loc="lower right", frameon=False, fontsize=10)
+ax.set_title("Optimizaciones probadas sobre la versión compartida", loc="left", color=INK)
+save(fig, "optimizaciones.png")
+
 # 5. Entrada, Hough y líneas
 pic = Image.open("runway.pgm")
-panels = [(pic, "Entrada (bordes Sobel)", "gray"), (Image.open("output/runway_shared_hough.png"),
-          "Espacio de Hough (θ × r)", None), (Image.open("output/runway_shared_lines.png"), "Líneas detectadas", None)]
+panels = [(pic, "Entrada con bordes de Sobel", "gray"), (Image.open("output/runway_shared_hough.png"),
+          "Espacio de Hough", None), (Image.open("output/runway_shared_lines.png"), "Líneas detectadas", None)]
 fig, axes = plt.subplots(1, 3, figsize=(15, 4.2), gridspec_kw={"width_ratios": [1.6, 0.9, 1.6]})
 for ax, (img, title, cmap) in zip(axes, panels):
     ax.imshow(img, cmap=cmap)

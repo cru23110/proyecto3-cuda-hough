@@ -13,18 +13,21 @@ hough_%: src/hough_%.cu $(COMMON) $(HEADERS)
 variants: src/experiments/variants.cu $(COMMON) $(HEADERS)
 	$(NVCC) $(FLAGS) $< $(COMMON) -o $@
 
+optimizaciones: src/experiments/optimizaciones.cu $(COMMON) $(HEADERS)
+	$(NVCC) $(FLAGS) $< $(COMMON) -o $@
+
 run: all
 	mkdir -p output
 	for b in $(BINS); do ./$$b runway.pgm || exit 1; done
 	-python3 scripts/compare_outputs.py
 
-bench: all variants
+bench: all variants optimizaciones
 	bash scripts/run_benchmarks.sh
 
 sweep: all
 	bash scripts/block_sweep.sh
 
 clean:
-	rm -f $(BINS) variants *.exe *.exp *.lib
+	rm -f $(BINS) variants optimizaciones *.exe *.exp *.lib
 
 .PHONY: all run bench sweep clean
